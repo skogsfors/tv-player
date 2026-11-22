@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TV-spelare</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  #player { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+  // Fullscreen looping YouTube player for an LG TV app: ?v=<videoId>
+  // Hosted on https so YouTube gets a proper referrer (embeds from file:// fail with error 153).
+  var params = new URLSearchParams(location.search);
+  var VIDEO_ID = params.get('v') || 'Y1AHT55rbVU';
+  var player;
+
+  function post(type, data) {
+    if (window.parent !== window) window.parent.postMessage({ source: 'tv-player', type: type, data: data }, '*');
+  }
+
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+      videoId: VIDEO_ID,
+      playerVars: { autoplay: 1, controls: 0, loop: 1, playlist: VIDEO_ID, rel: 0,
+                    modestbranding: 1, iv_load_policy: 3, playsinline: 1, fs: 0, disablekb: 1 },
+      events: {
+        onReady: function (e) {
+          e.target.unMute(); e.target.setVolume(100); e.target.playVideo();
+          // If unmuted autoplay is blocked, start muted and unmute on the next key press
+          setTimeout(function () {
+            if (player.getPlayerState() !== YT.PlayerState.PLAYING) { player.mute(); player.playVideo(); post('muted'); }
+          }, 2500);
+        },
+        onStateChange: function (e) {
+          if (e.data === YT.PlayerState.ENDED) { player.seekTo(0); player.playVideo(); }
+          post('state', e.data);
+        },
+        onError: function (e) { post('error', e.data); }
+      }
+    });
+  }
+
+  // Commands from the TV app: toggle, unmute
+  window.addEventListener('message', function (e) {
+    if (!player || !e.data || e.data.target !== 'tv-player') return;
+    if (e.data.cmd === 'toggle') {
+      player.getPlayerState() === YT.PlayerState.PLAYING ? player.pauseVideo() : player.playVideo();
+    } else if (e.data.cmd === 'unmute') {
+      player.unMute(); player.setVolume(100);
+    }
+  });
+
+  // If the iframe ever gets focus, forward remote keys to the app
+  document.addEventListener('keydown', function (e) { post('key', e.keyCode); });
+
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+</script>
+</body>
+</html>
